@@ -719,16 +719,29 @@ def real_glob(rglob):
         files = files + glob.glob(g)
     return files
 
+def extend_to_length(files, l):
+    while len(files) < l:
+        files = files + files
+    return files[:l]
+
+model_files = {
+    "34": "data/saved/r3d34_K_200ep.pth",
+    "50": "data/saved/r3d50_K_200ep.pth",
+    "101": "data/saved/r3d101_K_200ep.pth"
+}
+
 def main():
     parser = argparse.ArgumentParser(description="Run model against images")
     parser.add_argument('--input-glob', default='data/kinetics_videos/jpg/yoga/0wHOYxjRmlw_000041_000051/image_000{41,42,43,44,45,46,47,48,49,50,41,42,43,44,45,46}.jpg',
                         help="inputs")
-    parser.add_argument("--model", default="data/saved/r3d50_K_200ep.pth",
-                        help="which model")
+    parser.add_argument("--depth", default="50",
+                        help="which model depth")
     args = parser.parse_args()
 
+    model_file = model_files[args.depth]
+    model_depth = int(args.depth)
 
-    model = resnet.generate_model(model_depth=50,
+    model = resnet.generate_model(model_depth=model_depth,
                                   n_classes=700,
                                   n_input_channels=3,
                                   shortcut_type="B",
@@ -739,8 +752,9 @@ def main():
 
     # model = load_pretrained_model(model, args.model, "resnet", 700)
 
-    checkpoint = torch.load(args.model, map_location='cpu')
-    arch = '{}-{}'.format("resnet", 50)
+    checkpoint = torch.load(model_file, map_location='cpu')
+    arch = '{}-{}'.format("resnet", model_depth)
+    print(arch, checkpoint['arch'])
     assert arch == checkpoint['arch']
 
     if hasattr(model, 'module'):
@@ -753,10 +767,13 @@ def main():
 
     image_clips = []
     files = real_glob(args.input_glob)
+    files = extend_to_length(files, 16)
     print(files)
     for f in files:
         img = Image.open(f).convert("RGB")
         image_clips.append(img)
+
+    # print("EARLY", image_clips[0][0:4,0:4,0])
 
     mean = [0.4345, 0.4051, 0.3775]
     std = [0.2768, 0.2713, 0.2737]
@@ -769,6 +786,9 @@ def main():
     spatial_transform.append(ToTensor())
     spatial_transform.extend([ScaleValue(1), normalize])
     spatial_transform = Compose(spatial_transform)
+
+    # c = spatial_transform(image_clips[0])
+    # c.save("raw.png")
 
     model_clips = []
     clip = [spatial_transform(img) for img in image_clips]
